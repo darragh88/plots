@@ -1,0 +1,129 @@
+
+# PyTorch Geometric – Node-Level Prediction and Loss Function Guide
+
+This document summarizes how to set up a loss function and data structure for node-level prediction tasks using PyTorch Geometric (PyG), including model structure and training loop.
+
+---
+
+## Dataset Structure
+
+```python
+from torch_geometric.data import Data
+
+# One graph with 9 nodes and 5 features per node
+x = torch.randn(9, 5)  # Node features
+edge_index = ...       # Edge list of shape [2, E]
+y = torch.randn(9, 1)  # One target per node (regression)
+
+data = Data(x=x, edge_index=edge_index, y=y)
+```
+
+For classification, use:
+
+```python
+y = torch.randint(0, num_classes, (9,), dtype=torch.long)
+```
+
+---
+
+## Data Loader
+
+```python
+from torch_geometric.loader import DataLoader
+
+dataset = [data1, data2, ...]  # list of Data objects
+loader = DataLoader(dataset, batch_size=32, shuffle=True)
+```
+
+---
+
+## Model Definition
+
+```python
+import torch.nn.functional as F
+from torch_geometric.nn import GCNConv
+
+class Net(torch.nn.Module):
+    def __init__(self, in_dim=5, hidden=64, out_dim=1):
+        super().__init__()
+        self.conv1 = GCNConv(in_dim, hidden)
+        self.conv2 = GCNConv(hidden, hidden)
+        self.lin   = torch.nn.Linear(hidden, out_dim)
+
+    def forward(self, x, edge_index, batch):
+        x = F.relu(self.conv1(x, edge_index))
+        x = F.relu(self.conv2(x, edge_index))
+        return self.lin(x)
+```
+
+---
+
+## Loss Function Examples
+
+### 1. Scalar Regression per Node
+
+```python
+criterion = torch.nn.MSELoss()
+
+for data in loader:
+    data = data.to(device)
+    out = model(data.x, data.edge_index, data.batch)  # [N_total, 1]
+    loss = criterion(out, data.y)                     # [N_total, 1]
+    loss.backward()
+    optimizer.step()
+    optimizer.zero_grad()
+```
+
+### 2. k-Class Classification per Node
+
+```python
+num_classes = 3
+criterion = torch.nn.CrossEntropyLoss()
+model = Net(out_dim=num_classes)
+
+for data in loader:
+    data = data.to(device)
+    out = model(data.x, data.edge_index, data.batch)  # [N_total, k]
+    loss = criterion(out, data.y)                     # y: LongTensor of shape [N_total]
+```
+
+### 3. Binary Classification with BCEWithLogitsLoss
+
+```python
+criterion = torch.nn.BCEWithLogitsLoss()
+
+for data in loader:
+    data = data.to(device)
+    out = model(data.x, data.edge_index, data.batch).squeeze(-1)  # [N_total]
+    loss = criterion(out, data.y.float())  # Ensure y is float tensor with 0/1
+```
+
+---
+
+## Additional Features
+
+### a. Masked Loss
+
+```python
+mask = data.train_mask
+loss = criterion(out[mask], data.y[mask])
+```
+
+### b. Class Weighting for Imbalanced Classification
+
+```python
+weights = torch.tensor([0.2, 0.8], device=device)
+criterion = torch.nn.CrossEntropyLoss(weight=weights)
+```
+
+---
+
+## Output Dimension Clarification
+
+**The model’s `out_dim` is the number of predictions _per node_**, not the number of nodes:
+
+- Scalar regression: `out_dim = 1`
+- Binary logits: `out_dim = 1`
+- k-class classification: `out_dim = k` (e.g. 3 for 3-class)
+
+> You do **not** need to hard-code the number of nodes (e.g., 9) anywhere in your model.
