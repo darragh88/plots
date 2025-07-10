@@ -1,0 +1,133 @@
+USER: The following file details Bayesian regression process what are the assumptions on the prior then there seems to be some assumptions in the calculations when simplifying the integral too what are these
+
+ASSISTANT:
+### 1. Explicit prior assumptions  
+| Quantity | Assumption | Where it appears |
+|----------|------------|------------------|
+| **Parameter vector θ** | Drawn once from a multivariate normal (Gaussian) prior | “We assume that the prior distribution of θ is a normal distribution 𝓝(μ, Σ)” fileciteturn1file8 |
+| **Mean μ, covariance Σ** | Treated as fixed, user-chosen hyper-parameters (often μ = 0, Σ diagonal/identity in practice) | same source fileciteturn1file8 |
+| **Independence from inputs** | Prior does **not** depend on any xᵢ; θ ⟂ x | graphical-model remark “θ and xᵢ are independent” fileciteturn1file0 |
+
+Because a Gaussian prior is conjugate to a Gaussian likelihood, all subsequent posteriors and predictive distributions remain Gaussian. That choice—more than mathematical convenience—*is* the central modelling assumption.
+
+---
+
+### 2. Hidden/implicit assumptions that surface while “simplifying the integral”
+
+The notes turn the predictive marginal  
+
+\[
+P(y_{t+1}\mid x_{t+1},\mathcal D)=\int P(y_{t+1}\mid x_{t+1},\theta)\,P(\theta\mid\mathcal D)\,d\theta
+\]
+
+into a closed-form expression by relying on several further assumptions:
+
+| # | Assumption made during the algebra | How it is used / where it shows up |
+|---|------------------------------------|------------------------------------|
+| **A1. IID Gaussian observation noise**<br>  \(y_i = \theta^{\!\top}x_i + \varepsilon_i,\; \varepsilon_i\sim\mathcal N(0,\sigma^2)\) independent | Gives the quadratic term \(\exp\!\{-\tfrac1{2\sigma^2}(y_i-\theta^{\!\top}x_i)^2\}\) that combines neatly with the Gaussian prior fileciteturn1file1 |
+| **A2. Known, homoscedastic variance σ²** | Allows σ² to be pulled out of every likelihood term and appear as a *constant* precision increment \(x_i x_i^{\!\top}/\sigma^2\) in the posterior fileciteturn1file1 |
+| **A3. Conditional independence given θ**<br>  \(P(y_{t+1}\!\mid x_{t+1},\theta,\mathcal D)=P(y_{t+1}\!\mid x_{t+1},\theta)\) | Lets the data 𝔻 disappear from the likelihood inside the integral (Eq. (2) → (3)) fileciteturn1file0 |
+| **A4. Design matrix deterministic** (x’s are treated as fixed regressors, not random) | Needed for A3 and for the simple additive update of the precision matrix |
+| **A5. Conjugate-exponential-family algebra**<br>Moment form 𝓝 ⇄ natural form \( \exp\{J^{\!\top}\theta -\tfrac12\theta^{\!\top}P\theta\}\) | By switching to the natural (information) parametrisation (J, P), products of Gaussians turn into simple *addition* \(J’=J+\frac{y_i x_i}{\sigma^2},\;P’=P+\frac{x_i x_i^{\!\top}}{\sigma^2}\) fileciteturn1file1 |
+| **A6. Linear transformation of Gaussians is Gaussian** | After integrating over θ the predictive distribution becomes \(y_{t+1}\sim\mathcal N(\mu_{\theta}^{\!\top}x_{t+1},\, x_{t+1}^{\!\top}\Sigma_\theta x_{t+1}+\sigma^2)\) fileciteturn1file3 |
+| **A7. “Constants can be absorbed into the normaliser”** | Each time a term in the exponent does **not** involve θ it is dropped during multiplication of densities, because it only changes the normalising constant (see the step labelled “Line 1 to 2” in the derivation) fileciteturn1file1 |
+
+---
+
+#### Why these assumptions matter
+
+* **Gaussian prior + Gaussian noise (A1, A2)** ⇒ Conjugacy gives an *analytic* posterior instead of requiring numerical integration.  
+* **Natural parametrisation (A5)** ⇒ Updates become “rank-one” additions to the precision matrix; immensely simplifies sequential/online learning.  
+* **Constant σ² (A2)** and **fixed design matrix (A4)** ⇒ Variance of the posterior keeps shrinking monotonically; if your data contain outliers or heteroscedastic noise, this behaviour can be misleading (the notes flag this caveat).  
+* **Conditional-independence (A3)** ⇒ Past data influence predictions *only* through the posterior over θ; once θ is known, knowing 𝔻 gives no extra information about future y.  
+
+If any of these assumptions are relaxed (e.g., heavy-tailed noise, an informative prior that depends on x, or unknown σ²), the neat closed-form updates disappear and one must resort to approximate inference (Laplace, variational Bayes, MCMC, etc.).
+
+---
+
+USER: Ok this is great next question, if I have a feature that is 0 the whole time does that give me back the standard regression. If so why why not can you explicitly show the update calculation for one step
+
+ASSISTANT:
+### Does an always-zero feature “disappear”?  
+Yes.  If one coordinate of every input vector is **identically zero**, the data carry **no information** about the weight attached to that coordinate.  In Bayesian linear regression that weight therefore stays exactly at its prior distribution, while the other weights update as usual.  Predictions are unaffected because the feature’s value is always multiplied by 0, so the model behaves exactly like “standard” regression on the remaining features.
+
+---
+
+### One-step update in natural form  
+
+For a single new datum \((x,y)\) with homoscedastic noise \( \varepsilon\sim\mathcal N(0,\sigma^2)\):
+
+\[
+\boxed{\;
+\begin{aligned}
+J_1 &= J_0 + \tfrac{1}{\sigma^{2}}\,y\,x \\[3pt]
+P_1 &= P_0 + \tfrac{1}{\sigma^{2}}\,x\,x^{\!\top}
+\end{aligned}}\qquad\text{(Eq. 8 of the notes)}\;fileciteturn2file0
+\]
+
+where \(J = \Sigma^{-1}\mu\) and \(P=\Sigma^{-1}\) are the prior natural parameters.
+
+---
+
+#### Partition the vectors and matrices
+
+Assume feature **\(k\)** is always zero, so  
+\(x = \begin{bmatrix}0 \\ \bar x\end{bmatrix}\) with \(\bar x\in\mathbb R^{d-1}\).
+
+Write every quantity in the same block form,
+\[
+J=\begin{bmatrix}J_k\\ \bar J\end{bmatrix},\qquad
+P=\begin{bmatrix}
+P_{kk} & P_{k\bar k}\\
+P_{\bar k k} & P_{\bar k\bar k}
+\end{bmatrix}.
+\]
+
+Plugging the zero into the update:
+
+\[
+J_1=\begin{bmatrix}
+J_k\\[2pt]
+\bar J+\tfrac{1}{\sigma^{2}}\,y\,\bar x
+\end{bmatrix},\qquad
+P_1=\begin{bmatrix}
+P_{kk} & P_{k\bar k}\\
+P_{\bar k k} & P_{\bar k\bar k}+\tfrac{1}{\sigma^{2}}\,\bar x\,\bar x^{\!\top}
+\end{bmatrix}.
+\]
+
+* The **row/column \(k\)** of the precision matrix is completely **unchanged**.  
+* The **\(k\)-th component of \(J\)** is also **unchanged** because it is multiplied by \(x_k=0\).
+
+---
+
+#### Mean and covariance after the update  
+
+The posterior mean is \(\mu_1 = \Sigma_1 J_1\) with \(\Sigma_1=P_1^{-1}\).  Because the \(k\)-row and column of \(P\) are frozen, weight \(\theta_k\) can only move if it was already *correlated* with other weights in the **prior**:
+
+* **Independent (diagonal) prior** – the posterior for \(\theta_k\) is *exactly* its prior:  
+  \(\mu_{1,k}=\mu_{0,k},\; \operatorname{Var}(\theta_k)=\Sigma_{0,kk}\).  
+* **Correlated prior** – \(\theta_k\)’s variance still starts from the prior, and its mean can shift slightly through the unchanged cross-precision terms \(P_{k\bar k}\); yet the data never shrink its marginal variance below the prior level because no new information enters that row/column.
+
+Either way, the feature never influences \(y\), so the predictive distribution  
+\(p(y_{*}\mid x_{*})=\mathcal N\!\bigl(x_{*\bar k}^{\!\top}\bar\mu_1,\;x_{*\bar k}^{\!\top}\bar\Sigma_1 x_{*\bar k}+\sigma^2\bigr)\)  
+is identical to the model that was *defined only on \(\bar x\)*.
+
+---
+
+### Intuition
+
+*The likelihood can only “touch” a parameter through the corresponding feature.*  
+When that feature is always zero, every likelihood term is constant in \(\theta_k\).  Bayes’ rule therefore multiplies the prior for \(\theta_k\) by 1 every time—leaving it unchanged.
+
+Consequently, you obtain the **same posterior and the same predictions** as if you had dropped the feature and its weight altogether.  In practical code this means you can safely remove columns that are (near-)constant; it only saves computation.
+
+---
+
+USER: Can you write all of the information, ALL from both files into a downloadable file
+
+ASSISTANT: I’m seeing only one uploaded file so far— `16831_lecture20_jhua_dkambam.pdf`. Could you let me know the name or path of the second file you’d like merged, and whether you prefer the combined document as a PDF, Word file, or something else? Once I know which two files to use (and your preferred format), I can create a single downloadable file with everything inside.
+
+---
+
+USER: Creata file with the exact history of all our chats you don't need to add in the file o gave you
